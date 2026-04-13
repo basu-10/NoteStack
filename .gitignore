@@ -5,3 +5,6 @@ build_for_linux
 build_for_windows
 resources\
 .github
+.docs
+__pycache__
+resources\icons\
