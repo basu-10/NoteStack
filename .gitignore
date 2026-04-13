@@ -7,4 +7,4 @@ resources\
 .github
 .docs
 __pycache__
-resources\icons\
+resources\icons\*.png
