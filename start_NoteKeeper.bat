@@ -1,0 +1,1 @@
+"d:\dev_work\0 cross platform\text_management\.venv-1\Scripts\python.exe" "d:/dev_work/0 cross platform/text_management/NoteStack/main.py"
