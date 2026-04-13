@@ -1,0 +1,7 @@
+.build-venv
+.venv*
+build
+build_for_linux
+build_for_windows
+resources\
+.github
