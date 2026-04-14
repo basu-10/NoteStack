@@ -6,12 +6,13 @@ import sys
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QFrame, QApplication, QSizePolicy, QWidget,
+    QFrame, QApplication, QSizePolicy, QWidget,
 )
-from PyQt6.QtCore import QEvent, QPoint, QRect, QSettings, QSize, Qt, pyqtSignal, QMimeData
-from PyQt6.QtGui import QCursor, QTextCursor, QTextDocument
-from ui.modals.outline_modal import OutlineModal, extract_headings_from_document
+from PyQt6.QtCore import QEvent, QPoint, QRect, QSettings, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QCursor
+from ui.tui_editor_widget import TuiEditorWidget
 from ui.snap_utils import SnapOverlay, get_snap_zone
+from ui.styles import get_current_theme
 
 
 def _fmt_dt(raw: str) -> str:
@@ -81,12 +82,6 @@ class PromptDetailModal(QDialog):
         self._fullscreen_btn.setToolTip("Toggle fullscreen")
         self._fullscreen_btn.clicked.connect(self._toggle_fullscreen)
 
-        self._outline_btn = QPushButton("☰")
-        self._outline_btn.setObjectName("ModalIconBtn")
-        self._outline_btn.setFixedSize(28, 28)
-        self._outline_btn.setToolTip("Open outline")
-        self._outline_btn.clicked.connect(self._open_outline)
-
         self._minimize_btn = QPushButton("🗕")
         self._minimize_btn.setObjectName("ModalIconBtn")
         self._minimize_btn.setFixedSize(28, 28)
@@ -99,7 +94,6 @@ class PromptDetailModal(QDialog):
         close.clicked.connect(self.reject)
 
         hdr.addWidget(title, 1)
-        hdr.addWidget(self._outline_btn)
         hdr.addWidget(self._minimize_btn)
         hdr.addWidget(self._fullscreen_btn)
         hdr.addWidget(close)
@@ -136,22 +130,15 @@ class PromptDetailModal(QDialog):
         v.addWidget(div)
         v.addSpacing(16)
 
-        # Content
-        content_lbl = QLabel("CONTENT")
-        content_lbl.setObjectName("ModalSectionLabel")
-        v.addWidget(content_lbl)
-        v.addSpacing(8)
-
-        self._content_box = QTextEdit()
-        self._content_box.setObjectName("ModalTextEdit")
-        content = self._data.get("content", "")
-        if Qt.mightBeRichText(content):
-            self._content_box.setHtml(content)
-        else:
-            self._content_box.setPlainText(content)
-        self._content_box.setReadOnly(True)
-        self._content_box.setMinimumHeight(200)
+        # Content — read-only TUI viewer (renders Markdown)
+        self._content_box = TuiEditorWidget(
+            theme=get_current_theme(),
+            viewer=True,
+            parent=self,
+        )
         self._content_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._content_box.setMinimumHeight(200)
+        self._content_box.set_content(self._data.get("content", ""))
         v.addWidget(self._content_box, 1)
         v.addSpacing(22)
 
@@ -495,30 +482,8 @@ class PromptDetailModal(QDialog):
     def _copy(self):
         content = self._data.get("content", "")
         clipboard = QApplication.clipboard()
-        if not clipboard:
-            return
-        if Qt.mightBeRichText(content):
-            doc = QTextDocument()
-            doc.setHtml(content)
-            mime = QMimeData()
-            mime.setHtml(content)
-            mime.setText(doc.toPlainText())
-            clipboard.setMimeData(mime)
-        else:
+        if clipboard:
             clipboard.setText(content)
-
-    def _open_outline(self):
-        headings = extract_headings_from_document(self._content_box.document())
-        modal = OutlineModal(headings, title="Outline", parent=self)
-        modal.heading_selected.connect(self._jump_to_heading_position)
-        modal.exec()
-
-    def _jump_to_heading_position(self, target_pos: int):
-        cursor = self._content_box.textCursor()
-        cursor.setPosition(int(target_pos), QTextCursor.MoveMode.MoveAnchor)
-        self._content_box.setTextCursor(cursor)
-        self._content_box.ensureCursorVisible()
-        self._content_box.setFocus()
 
     def _edit(self):
         self.edit_requested.emit(self._data["id"])

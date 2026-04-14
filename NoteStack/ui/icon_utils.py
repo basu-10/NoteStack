@@ -1,6 +1,5 @@
 """
 Utility helpers for loading icons from resources/.
-Works in both development (run from repo) and frozen (PyInstaller) modes.
 """
 from __future__ import annotations
 

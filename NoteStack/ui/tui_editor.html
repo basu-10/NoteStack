@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!--
+    qwebchannel.js is served by Qt from its internal resource system.
+    This is always available when loaded inside a QWebEngineView with a
+    QWebChannel attached — no network request needed.
+  -->
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+  <!--
+    toastui-editor.min.css is resolved against the base URL supplied by
+    TuiEditorWidget (resources/tui_editor/).
+  -->
+  <link rel="stylesheet" href="toastui-editor.min.css" />
+
+  <style>
+    /* ── Reset / layout ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+    #editor-mount { width: 100%; height: 100%; }
+
+    /* ── Dark theme (default) ─────────────────────────────────────────── */
+    body.ns-dark .toastui-editor-defaultUI {
+      background: #11111A;
+      border-color: #1F1F35;
+    }
+    body.ns-dark .toastui-editor-toolbar {
+      background: #1C1C2C;
+      border-bottom: 1px solid #2A2A45;
+    }
+    body.ns-dark .toastui-editor-toolbar-group button {
+      color: #F0F0F8;
+    }
+    body.ns-dark .toastui-editor-toolbar-group button:hover {
+      background: #2A2A45;
+    }
+    body.ns-dark .toastui-editor-toolbar-divider {
+      background: #2A2A45;
+    }
+    /* Markdown plain-text pane */
+    body.ns-dark .toastui-editor-md-container,
+    body.ns-dark .ProseMirror {
+      background: #11111A;
+      color: #F0F0F8;
+      caret-color: #F0F0F8;
+    }
+    /* WYSIWYG pane */
+    body.ns-dark .toastui-editor-ww-container .ProseMirror {
+      background: #11111A;
+      color: #F0F0F8;
+    }
+    /* Preview pane */
+    body.ns-dark .toastui-editor-md-preview {
+      background: #13131F;
+      color: #F0F0F8;
+      border-left: 1px solid #1F1F35;
+    }
+    body.ns-dark .toastui-editor-md-preview .toastui-editor-contents {
+      color: #F0F0F8;
+    }
+    /* Tab bar (Write / Preview) */
+    body.ns-dark .toastui-editor-tabs {
+      background: #0D0D14;
+      border-bottom: 1px solid #1F1F35;
+    }
+    body.ns-dark .toastui-editor-tabs .tab-item {
+      color: #8B8BAA;
+    }
+    body.ns-dark .toastui-editor-tabs .tab-item.active {
+      color: #F0F0F8;
+      border-bottom: 2px solid #4F6EF7;
+    }
+    /* Scrollbars */
+    body.ns-dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+    body.ns-dark ::-webkit-scrollbar-track { background: #13131F; }
+    body.ns-dark ::-webkit-scrollbar-thumb { background: #2A2A45; border-radius: 3px; }
+
+    /* Viewer mode: remove toolbar chrome */
+    body.ns-viewer .toastui-editor-contents {
+      padding: 16px;
+    }
+
+    /* ── Light theme ──────────────────────────────────────────────────── */
+    body.ns-light .toastui-editor-defaultUI {
+      background: #FFFFFF;
+      border-color: #D8DFEF;
+    }
+    body.ns-light .toastui-editor-toolbar {
+      background: #F5F7FB;
+      border-bottom: 1px solid #D8DFEF;
+    }
+    body.ns-light .toastui-editor-md-container,
+    body.ns-light .ProseMirror {
+      background: #FFFFFF;
+      color: #1B2333;
+    }
+    body.ns-light .toastui-editor-md-preview {
+      background: #F5F7FB;
+      color: #1B2333;
+      border-left: 1px solid #D8DFEF;
+    }
+    body.ns-light .toastui-editor-tabs { background: #EDF1F8; }
+    body.ns-light .toastui-editor-tabs .tab-item { color: #4E5B75; }
+    body.ns-light .toastui-editor-tabs .tab-item.active {
+      color: #1B2333;
+      border-bottom: 2px solid #4F6EF7;
+    }
+    body.ns-light ::-webkit-scrollbar { width: 6px; height: 6px; }
+    body.ns-light ::-webkit-scrollbar-track { background: #E6ECF7; }
+    body.ns-light ::-webkit-scrollbar-thumb { background: #B9C5DF; border-radius: 3px; }
+  </style>
+</head>
+
+<!--
+  Default class is ns-dark; Python will call initEditor() after the bridge
+  handshake, passing the actual theme.
+-->
+<body class="ns-dark">
+  <div id="editor-mount"></div>
+
+  <!-- TUI Editor bundle — resolved via base URL from TuiEditorWidget -->
+  <script src="toastui-editor-all.min.js"></script>
+
+  <script>
+    "use strict";
+
+    /* ── State ────────────────────────────────────────────────────────── */
+    var _bridge  = null;   // QWebChannel bridge object
+    var _editor  = null;   // toastui.Editor / Viewer instance
+    var _viewer  = false;  // true → read-only viewer, no toolbar
+
+    /* ── Debounce helper (300 ms) ───────────────────────────────────── */
+    function debounce(fn, delay) {
+      var timer = null;
+      return function () {
+        var args = arguments;
+        clearTimeout(timer);
+        timer = setTimeout(function () { fn.apply(null, args); }, delay);
+      };
+    }
+
+    /* Notify Python of content change — debounced to avoid hammering the
+       bridge on every keystroke.  Bridge slot: on_content_changed(str). */
+    var _notifyChange = debounce(function () {
+      if (_bridge && _editor && !_viewer) {
+        _bridge.on_content_changed(_editor.getMarkdown());
+      }
+    }, 300);
+
+    /* ── Theme helpers ──────────────────────────────────────────────── */
+    function _applyTheme(theme) {
+      document.body.classList.remove("ns-dark", "ns-light");
+      document.body.classList.add(theme === "light" ? "ns-light" : "ns-dark");
+    }
+
+    /* ── Editor initialisation ──────────────────────────────────────── */
+    function _initEditor(initialContent, theme, mode, viewerOnly) {
+      _viewer = !!viewerOnly;
+      _applyTheme(theme || "dark");
+
+      var mountEl = document.getElementById("editor-mount");
+
+      if (_viewer) {
+        document.body.classList.add("ns-viewer");
+        _editor = new toastui.Editor.factory({
+          el: mountEl,
+          viewer: true,
+          initialValue: initialContent || "",
+        });
+      } else {
+        _editor = new toastui.Editor({
+          el: mountEl,
+          height: "100%",
+          initialEditType: mode || "markdown",
+          previewStyle: "tab",
+          initialValue: initialContent || "",
+          usageStatistics: false,
+        });
+        _editor.on("change", _notifyChange);
+      }
+    }
+
+    /* ── Public JS API (called from Python via page.runJavaScript) ───── */
+    window.tuiEditor = {
+      /* Set markdown content. */
+      setMarkdown: function (md) {
+        if (_editor) { _editor.setMarkdown(md || ""); }
+      },
+      /* Return current markdown (sync). */
+      getMarkdown: function () {
+        return _editor ? _editor.getMarkdown() : "";
+      },
+      /* Switch theme without re-creating the editor. */
+      setTheme: function (theme) {
+        _applyTheme(theme);
+      },
+      /* Switch editing mode ('markdown' | 'wysiwyg'). */
+      setMode: function (mode) {
+        if (_editor && !_viewer) { _editor.changeMode(mode); }
+      },
+      /* Focus the editor's text area. */
+      focusEditor: function () {
+        if (_editor && !_viewer) { _editor.focus(); }
+      },
+      /* Called once by Python after bridge is ready.
+         Python passes all startup params so initEditor is one round-trip. */
+      initEditor: function (content, theme, mode, viewerOnly) {
+        _initEditor(content, theme, mode, viewerOnly);
+      },
+    };
+
+    /* ── QWebChannel bootstrap ──────────────────────────────────────── */
+    /*
+      The bridge handshake is asynchronous.  Once complete we call
+      bridge.on_editor_ready() so Python knows it can call initEditor().
+    */
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+      _bridge = channel.objects.bridge;
+      _bridge.on_editor_ready();
+    });
+  </script>
+</body>
+</html>
