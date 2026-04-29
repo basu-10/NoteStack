@@ -1,8 +1,48 @@
 # NoteStack
 
-A local desktop application for managing notes and AI prompts, built with Python and PyQt6.
+NoteStack is a local-first desktop app for managing personal notes.
+No accounts, no cloud, no nonsense.
 
-NoteStack lets you store, organise, search, and copy notes from a clean, high-DPI-aware GUI — no cloud, no account, just a local SQLite database on your machine.
+---
+## Why use it
+
+### No cloud dependency
+
+Tools like Evernote or Microsoft OneNote push everything through their servers.
+NoteStack doesn’t. It runs entirely on your machine.
+You own your data
+Everything lives in a local SQLite DB.
+No syncing issues, no outages, no “we changed our terms” surprises.
+
+### Built for AI workflows
+It treats prompts as first-class objects, not just text blobs.
+Copy → paste into something like CHOTU and move on. Fast loop, no friction.
+
+### Simple but structured organization
+Folders, tags, favorites—done locally, instantly.
+No lag from network calls, no weird indexing delays.
+
+### Native performance
+Built with PyQt6, not a bloated web wrapper.
+That means faster startup, better responsiveness, and fewer resources wasted.
+
+##Where it beats big tools
+
+### No login treadmill
+Open app → start working.
+No auth flows, no sync status, no interruptions.
+
+### Search is actually instant
+Local SQLite queries beat cloud-backed indexing every time.
+Especially when you scale up.
+
+### Predictable data behavior
+No sync conflicts, no silent overwrites.
+Your database stays exactly as you left it—even across reinstalls.
+
+### No feature bloat
+Big apps keep adding junk to justify subscriptions.
+This stays focused: notes + prompts, organized well.
 
 ---
 
